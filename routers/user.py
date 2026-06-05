@@ -5,6 +5,7 @@ from schemas import UserCreate, UserResponse
 from typing import Annotated
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from auth import CurrentUser 
 
 router = APIRouter()
 
