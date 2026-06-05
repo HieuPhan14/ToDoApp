@@ -1,14 +1,22 @@
 from fastapi import FastAPI
-from database import Base
+from database import engine, Base
+from contextlib import asynccontextmanager
+from routers import task, user
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    await engine.dispose()
 
-db = Base.metadata.create_all()
+app = FastAPI(lifespan=lifespan)
+app.include_router(task.router, prefix="/api/items", tags=["tasks"])
+app.include_router(user.router, prefix="/api/users", tags=["users"])
 
-
-
-
-@app.get("/")
+@app.get("/health_check")
 async def root():
-    return {"message": "Hello World"}
+    return {"status": "Healthy"}
+
+
 
