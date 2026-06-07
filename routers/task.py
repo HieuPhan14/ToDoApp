@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Path, status, Query, Depends
+from auth import CurrentUser
 from database import get_db
 from models.task import TaskStatus, Task
 from schemas import TaskCreate, TaskResponse, TaskUpdate
 from typing import Annotated
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -16,6 +18,7 @@ async def get_all_items(
     ):
     result = await db.execute(
         select(Task).
+        options(selectinload(Task.user)).
         limit(limit).
         offset(skip)
         )
@@ -28,6 +31,7 @@ async def get_all_items(
 async def get_item(item_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
    result = await db.execute(
        select(Task).
+       options(selectinload(Task.user)).
        where(Task.id == item_id)
    )
    task = result.scalars().first()
@@ -46,6 +50,7 @@ async def get_items_with_status(
     ):
     result = await db.execute(
        select(Task).
+       options(selectinload(Task.user)).
        where(Task.status == status_type)
     )
     tasks = result.scalars().all()
@@ -58,23 +63,29 @@ async def get_items_with_status(
     )
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-async def create_task(task: TaskCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+async def create_task(
+    task: TaskCreate, 
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: CurrentUser
+    ):
     post = Task(
         title = task.title,
         content = task.content,
         status = task.status,
-        due_date = task.due_date
+        due_date = task.due_date,
+        user_id = current_user.id
     )
     db.add(post)
     await db.commit()
-    await db.refresh(post)
+    await db.refresh(post, attribute_names=["user"])
     return post
 
 @router.patch("/{item_id}", response_model=TaskResponse)
 async def partial_update(
     item_id: Annotated[int, Path(title="The ID of task to modified", ge=0, le=1000)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    task: TaskUpdate
+    task: TaskUpdate,
+    current_user: CurrentUser
 ):
     result = await db.execute(
         select(Task).
@@ -86,6 +97,12 @@ async def partial_update(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ain't find post to modify"
+        )
+    
+    if item.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to edit this post"
         )
     
     updated_data = task.model_dump(exclude_unset=True)
@@ -93,14 +110,15 @@ async def partial_update(
         setattr(item, key, value)
 
     await db.commit()
-    await db.refresh(item)
+    await db.refresh(item, attribute_names=["user"])
     return item
 
 @router.put("/{item_id}", response_model=TaskResponse)
 async def full_update(
     item_id: Annotated[int, Path(title="The ID of task to modified", ge=0, le=1000)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    task: TaskCreate
+    task: TaskCreate,
+    current_user: CurrentUser
 ):
     result = await db.execute(
         select(Task).
@@ -114,18 +132,25 @@ async def full_update(
             detail="Ain't find post to modify"
         )
     
+    if item.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to edit this post"
+        )
+    
     for key, value in task.model_dump().items():
         setattr(item, key, value)
 
     await db.commit()
-    await db.refresh(item)
+    await db.refresh(item, attribute_names=["user"])
 
     return item
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     item_id: Annotated[int, Path(title="The ID of task to modified", ge=0, le=1000)],
-    db: Annotated[AsyncSession, Depends(get_db)]
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: CurrentUser
 ):
     result = await db.execute(
         select(Task).
@@ -138,6 +163,12 @@ async def delete_task(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ain't find post to delete"
     ) 
+
+    if task.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this post"
+        )
 
     await db.delete(task)
     await db.commit()

@@ -19,7 +19,7 @@ password_hash = PasswordHash.recommended()
 
 DUMMY_HASH = password_hash.hash("dummypassword")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/token")
 
 def verify_password(plained_password, hashed_password):
     return password_hash.verify(plained_password, hashed_password)

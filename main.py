@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from database import engine, Base
 from contextlib import asynccontextmanager
 from routers import task, user
-from fastapi.security import OAuth2PasswordBearer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,10 +14,12 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(task.router, prefix="/api/items", tags=["tasks"])
 app.include_router(user.router, prefix="/api/users", tags=["users"])
 
-
-
 @app.get("/health_check")
 async def root():
     return {"status": "Healthy"}
+
+
+
+
 
 
