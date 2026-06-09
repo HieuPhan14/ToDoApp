@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
+import secrets
 
 from fastapi.security import OAuth2PasswordBearer
 from jwt import InvalidTokenError
@@ -10,10 +12,7 @@ from fastapi import Depends, HTTPException, status
 from database import get_db
 from models.user import User
 from sqlalchemy import select
-
-SECRET_KEY = "ed668a9f511e6f4a57a5b27045cc77fd6df4f12890057408b244d09522cc30f6"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+from config import settings
 
 password_hash = PasswordHash.recommended()
 
@@ -26,6 +25,12 @@ def verify_password(plained_password, hashed_password):
 
 def get_password_hash(password):
     return password_hash.hash(password)
+
+def generate_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
 
 async def get_user(
     db: AsyncSession,
@@ -45,12 +50,12 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, settings.secret_key.get_secret_value(), algorithm=settings.algorithm)
     return encoded_jwt
 
 def verify_access_token(token: str) -> str | None:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.secret_key.get_secret_value(), algorithms=[settings.algorithm])
     except InvalidTokenError:
         return None
     else: 

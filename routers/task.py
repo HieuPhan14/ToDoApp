@@ -2,29 +2,45 @@ from fastapi import APIRouter, HTTPException, Path, status, Query, Depends
 from auth import CurrentUser
 from database import get_db
 from models.task import TaskStatus, Task
-from schemas import TaskCreate, TaskResponse, TaskUpdate
+from schemas import TaskCreate, TaskResponse, TaskUpdate, PaginatedTaskResponse
 from typing import Annotated
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from config import settings
 
 router = APIRouter()
 
-@router.get("", response_model=list[TaskResponse])
+@router.get("", response_model=PaginatedTaskResponse)
 async def get_all_items(
     db: Annotated[AsyncSession, Depends(get_db)],
     skip: Annotated[int, Query(ge=0)] = 0, 
-    limit: Annotated[int, Query(le=100)] = 10,
+    limit: Annotated[int, Query(le=100)] = settings.tasks_per_page,
     ):
+    count_result = await db.execute(
+        select(func.count()).
+        select_from(Task)
+    )
+    total = count_result.scalar() or 0
+
     result = await db.execute(
         select(Task).
         options(selectinload(Task.user)).
         limit(limit).
-        offset(skip)
+        offset(skip).
+        order_by(Task.created_at.desc())
         )
     tasks = result.scalars().all()
 
-    return tasks
+    has_more = (skip + len(tasks))  < total
+
+    return PaginatedTaskResponse(
+        tasks=[TaskResponse.model_validate(task) for task in tasks],
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=has_more
+    )
 
 
 @router.get("/{item_id}", response_model=TaskResponse)
@@ -40,7 +56,7 @@ async def get_item(item_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
        return task
    else: raise HTTPException(
        status_code=status.HTTP_404_NOT_FOUND,
-       detail="Ain't, this post ain't real"
+       detail="Task not found"
    )
 
 @router.get("/status/{status_type}", response_model=list[TaskResponse])
@@ -59,7 +75,7 @@ async def get_items_with_status(
         return tasks
     else: raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail="Ain't, these post with this status ain't real"
+        detail="No tasks found with the given status"
     )
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -96,15 +112,15 @@ async def partial_update(
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ain't find post to modify"
+            detail="Task not found"
         )
-    
+
     if item.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to edit this post"
+            detail="Not authorized to edit this task"
         )
-    
+
     updated_data = task.model_dump(exclude_unset=True)
     for key, value in updated_data.items():
         setattr(item, key, value)
@@ -129,15 +145,15 @@ async def full_update(
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ain't find post to modify"
+            detail="Task not found"
         )
-    
+
     if item.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to edit this post"
+            detail="Not authorized to edit this task"
         )
-    
+
     for key, value in task.model_dump().items():
         setattr(item, key, value)
 
@@ -161,13 +177,13 @@ async def delete_task(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ain't find post to delete"
+            detail="Task not found"
     ) 
 
     if task.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this post"
+            detail="Not authorized to delete this task"
         )
 
     await db.delete(task)
