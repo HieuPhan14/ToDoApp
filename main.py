@@ -12,8 +12,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.mount("/media", StaticFiles(directory="media"), name="media")
-
 app.include_router(task.router, prefix="/api/items", tags=["tasks"])
 app.include_router(user.router, prefix="/api/users", tags=["users"])
 

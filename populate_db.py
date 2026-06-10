@@ -6,7 +6,9 @@ import httpx
 from sqlalchemy import delete, select, update
 
 from database import AsyncSessionLocal, engine
+from image_utils import PROFILE_PICS_DIR
 from main import app
+from models.password_reset import PasswordResetToken
 from models.task import Task
 from models.user import User
 
@@ -236,11 +238,14 @@ TASKS = [
 
 
 async def clear_existing_data() -> None:
-    async with engine.begin() as conn:
-        from database import Base
-        await conn.run_sync(Base.metadata.create_all)
+    if PROFILE_PICS_DIR.exists():
+        for file in PROFILE_PICS_DIR.iterdir():
+            if file.is_file() and file.name != ".gitkeep":
+                file.unlink()
+        print(f"Deleted profile pictures from {PROFILE_PICS_DIR}")
 
     async with AsyncSessionLocal() as db:
+        await db.execute(delete(PasswordResetToken))
         await db.execute(delete(Task))
         await db.execute(delete(User))
         await db.commit()
@@ -355,4 +360,5 @@ async def populate() -> None:
 
 
 if __name__ == "__main__":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(populate())

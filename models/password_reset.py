@@ -19,5 +19,5 @@ class PasswordResetToken(Base):
         default=lambda: datetime.now(UTC),
     )
 
-    user: Mapped[User] = relationship(back_populates="reset_tokens")
+    user: Mapped["User"] = relationship(back_populates="reset_tokens")
     

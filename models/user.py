@@ -2,7 +2,7 @@ from __future__ import annotations
 from database import Base
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 from sqlalchemy import String
-
+from config import settings
 
 class User(Base):
     __tablename__ = "user"
@@ -24,5 +24,5 @@ class User(Base):
     @property
     def image_path(self) -> str:
         if self.image_file:
-            return f"/media/profile_pics/{self.image_file}"
-        return "/static/profile_pics/default.jpg"
+            return f"https://{settings.s3_bucket_name}.s3.{settings.s3_region}.amazonaws.com/profile_pics/{self.image_file}"
+        return f"/media/profile_pics/{self.image_file}"
